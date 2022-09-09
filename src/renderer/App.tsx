@@ -26,6 +26,7 @@ export function Prompt(props) {
   const [numSamples, setNumSamples] = useState(1);
   const [plms, setPlms] = useState('on');
   const [weights, setWeights] = useState(props.weightDir);
+  const [error, setError] = useState(false);
 
   const handlePrompt = (prompt) => {
     if (!loading) {
@@ -40,6 +41,7 @@ export function Prompt(props) {
       window.electron.ipcRenderer.runPrompt({ prompt: prompt, args: args });
     }
     setLoading(true);
+    setError(false);
   };
 
   const reset = () => {
@@ -73,12 +75,23 @@ export function Prompt(props) {
     setLoading(false);
   });
 
+  window.electron.ipcRenderer.on('error', (error) => {
+    setError(true);
+    setLoading(false);
+  });
+
   useEffect(() => {
     setShowOptions(props.showOptions);
   }, [props.outDir, props.showOptions, props.weightDir]);
 
   return (
     <div>
+      {error && (
+        <p className="text-red-500 font-bold">
+          Error detected! Please check the logs. Let me know choltz@hey.com if
+          it's unclear.
+        </p>
+      )}
       {showOptions ? (
         <form
           id="options-form"
@@ -315,7 +328,7 @@ function Image() {
     setLoadingStatus('Sampling...');
 
     if (pct === '100') {
-      setLoadingStatus('Framing...');
+      setLoadingStatus('Finalizing...');
     }
   });
 

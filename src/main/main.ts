@@ -203,8 +203,14 @@ const createWindow = async () => {
 
     charle.on('close', () => {
       console.log('KILLEd!!! ', charle.killed);
+      console.log('stats', charle.exitCode);
 
-      if (!charle.killed) {
+      if (charle.killed) {
+        mainWindow.webContents.send('killed', true);
+      } else if (charle.exitCode === 1) {
+        mainWindow.webContents.send('error', true);
+        mainWindow.webContents.send('killed', true);
+      } else if (charle.exitCode === 0) {
         const outpathLocation = execArgs.findIndex((x) => x == '--outdir');
         const outpath =
           outpathLocation == -1
@@ -216,9 +222,9 @@ const createWindow = async () => {
         mainWindow.webContents.send(
           'image-load',
           getLatestImage(outpath).latestImage
-        ); // Send the data to the render thread
+        );
       } else {
-        mainWindow.webContents.send('killed', true);
+        mainWindow.webContents.send('error', true);
       }
     });
   });
