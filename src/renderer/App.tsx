@@ -131,14 +131,17 @@ export function Prompt(props) {
               DDIM sampling steps. This will make the biggest difference to the
               quality of your image, but takes time. I recommend 25-50.
             </label>
+            <span className="inline-flex">{ddimSteps}</span>
             <input
               id="--ddim_steps"
-              type="number"
+              type="range"
+              min="1"
+              max="150"
               name="--ddim_steps"
               placeholder="ddim_steps"
               value={ddimSteps}
               onChange={(e) => setDdimSteps(e.target.value)}
-              className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              className="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             />
           </div>
 
@@ -435,6 +438,12 @@ const Main = () => {
     setWeightProgess(Math.round(progress.percent * 100).toString());
   });
 
+  window.electron.ipcRenderer.on('default-outdir', (paths) => {
+    setOutDir(paths.outDir);
+    setImages(paths.allImages.reverse());
+    setWeightDir(paths.weights);
+  });
+
   window.electron.ipcRenderer.on('download-complete', (progress) => {
     setWeightProgess(100);
     setWeightsExist(true);
@@ -535,37 +544,39 @@ const Main = () => {
             </div>
           )}
 
-          <div className={`${showGallery ? 'hidden' : ''}`}>
-            {outDir !== '' && weightsExist ? (
-              <Prompt
-                weightDir={weightDir}
-                outDir={outDir}
-                showOptions={showOptions}
-              />
-            ) : (
-              'Loading...'
-            )}
-
-            {/* Image */}
-            <Image />
-          </div>
-        </div>
-
-        {!weightsExist && (
-          <div className="text-center mt-4">
-            <p className="font-bold">Downloading weights...{weightProgress}%</p>
-            <>
-              <div className="my-4 w-full bg-gray-200 rounded-full h-2.5 mb-4 ">
-                <div
-                  className="bg-blue-600 h-2.5 rounded-full "
-                  style={{ width: `${weightProgress}%` }}
-                >
-                  <span className="sr-only">${weightProgress}</span>
+          {!weightsExist ? (
+            <div className="text-center mt-4">
+              <p className="font-bold">
+                Downloading weights...{weightProgress}%
+              </p>
+              <>
+                <div className="my-4 w-full bg-gray-200 rounded-full h-2.5 mb-4 ">
+                  <div
+                    className="bg-blue-600 h-2.5 rounded-full "
+                    style={{ width: `${weightProgress}%` }}
+                  >
+                    <span className="sr-only">${weightProgress}</span>
+                  </div>
                 </div>
-              </div>
-            </>
-          </div>
-        )}
+              </>
+            </div>
+          ) : (
+            <div className={`${showGallery ? 'hidden' : ''}`}>
+              {outDir !== '' ? (
+                <Prompt
+                  weightDir={weightDir}
+                  outDir={outDir}
+                  showOptions={showOptions}
+                />
+              ) : (
+                'Loading...'
+              )}
+
+              {/* Image */}
+              <Image />
+            </div>
+          )}
+        </div>
 
         {/* Show Logs Button */}
         <div className="z-10 fixed bottom-4 right-4">

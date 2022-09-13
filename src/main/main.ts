@@ -123,22 +123,29 @@ const installWeights = async (mainWindow) => {
     return;
   }
 
-  await electronDl.download(
-    win,
-    'https://me.cmdr2.org/stable-diffusion-ui/sd-v1-4.ckpt',
-    {
-      directory: `${process.resourcesPath}/stable_diffusion/models/`,
-      filename: 'model.ckpt',
-      onProgress: (progress) => {
-        console.log(progress);
-        mainWindow.webContents.send('download-progress', progress);
-      },
-      onCompleted: (progress) => {
-        console.log('Download complete');
-        mainWindow.webContents.send('download-complete', progress);
-      },
-    }
-  );
+  await electronDl.download(win, process.env.CHECKPOINT_URL, {
+    directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
+    filename: 'checkpoint_liberty_with_aug.pth',
+    onProgress: (progress) => {
+      console.log(progress);
+    },
+    onCompleted: (progress) => {
+      console.log('Download checkpoint complete');
+    },
+  });
+
+  await electronDl.download(win, process.env.WEIGHTS_URL, {
+    directory: `${process.resourcesPath}/stable_diffusion/models/`,
+    filename: 'model.ckpt',
+    onProgress: (progress) => {
+      console.log(progress);
+      mainWindow.webContents.send('download-progress', progress);
+    },
+    onCompleted: (progress) => {
+      console.log('Download complete');
+      mainWindow.webContents.send('download-complete', progress);
+    },
+  });
 };
 
 const createWindow = async () => {
@@ -199,14 +206,6 @@ const createWindow = async () => {
   ipcMain.on('run-prompt', (event, { prompt, args }) => {
     console.log('PROMPT: ', prompt);
     console.log('ARGS: ', args);
-
-    const python = require('child_process').spawn('python3', [
-      '/Users/charlieholtz/workspace/dev/charl-e/stable-diffusion/txt2img.py',
-    ]);
-
-    python.stderr.on('data', (data) => {
-      console.log(data.toString());
-    });
 
     mainWindow.webContents.send('initializing', true);
 
