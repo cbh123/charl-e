@@ -10,14 +10,14 @@
  */
 import path from 'path';
 import { app, BrowserWindow, shell, ipcMain, protocol } from 'electron';
-import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
+const electronDl = require('electron-dl');
+const { download } = require('electron-dl');
 
 const fs = require('fs');
 const os = require('os');
-require('update-electron-app')();
 
 const DEFAULT_OUTDIR = `${os.homedir()}/Desktop/charl-e/samples`;
 const MODEL_DIR = `${os.homedir()}/Desktop/charl-e/models/model.ckpt`;
@@ -25,6 +25,12 @@ const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
 let charle = null;
 process.env.PYTORCH_ENABLE_MPS_FALLBACK = 1;
 process.env.INCLUDE_WEIGHTS = false;
+
+let win;
+(async () => {
+  await app.whenReady();
+  win = new BrowserWindow();
+})();
 
 function getLatestImage(filepath: string) {
   if (!fs.existsSync(filepath)) {
@@ -63,27 +69,15 @@ function getPaths(filepath: string) {
       config: `${process.resourcesPath}/stable_diffusion/configs/v1-inference.yaml`,
       executable: filepath,
       // the following depends on if we're in with weights or not weights mode!
-      weights: fs.existsSync(
-        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
-      )
-        ? `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
-        : MODEL_DIR,
+      weights: `${process.resourcesPath}/stable_diffusion/models/model.ckpt`,
     };
     // we're in dev
   }
   return {
     config: CONFIG_DIR,
     executable: './stable_diffusion/txt2img',
-    weights: MODEL_DIR,
+    weights: `${process.resourcesPath}/stable_diffusion/models/model.ckpt`,
   };
-}
-
-class AppUpdater {
-  constructor() {
-    log.transports.file.level = 'info';
-    autoUpdater.logger = log;
-    autoUpdater.checkForUpdatesAndNotify();
-  }
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -117,6 +111,34 @@ const installExtensions = async () => {
       forceDownload
     )
     .catch(console.log);
+};
+
+const installWeights = async (mainWindow) => {
+  console.log('Downloading...');
+
+  if (
+    fs.existsSync(`${process.resourcesPath}/stable_diffusion/models/model.ckpt`)
+  ) {
+    console.log('Already downloaded!');
+    return;
+  }
+
+  await electronDl.download(
+    win,
+    'https://me.cmdr2.org/stable-diffusion-ui/sd-v1-4.ckpt',
+    {
+      directory: `${process.resourcesPath}/stable_diffusion/models/`,
+      filename: 'model.ckpt',
+      onProgress: (progress) => {
+        console.log(progress);
+        mainWindow.webContents.send('download-progress', progress);
+      },
+      onCompleted: (progress) => {
+        console.log('Download complete');
+        mainWindow.webContents.send('download-complete', progress);
+      },
+    }
+  );
 };
 
 const createWindow = async () => {
@@ -162,10 +184,11 @@ const createWindow = async () => {
     if (
       !fs.existsSync(
         `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
-      ) ||
-      !fs.existsSync(MODEL_DIR)
+      )
     ) {
+      console.log(`${process.resourcesPath}`);
       mainWindow.webContents.send('no-weights', {});
+      installWeights(mainWindow);
     }
   });
 
@@ -176,6 +199,14 @@ const createWindow = async () => {
   ipcMain.on('run-prompt', (event, { prompt, args }) => {
     console.log('PROMPT: ', prompt);
     console.log('ARGS: ', args);
+
+    const python = require('child_process').spawn('python3', [
+      '/Users/charlieholtz/workspace/dev/charl-e/stable-diffusion/txt2img.py',
+    ]);
+
+    python.stderr.on('data', (data) => {
+      console.log(data.toString());
+    });
 
     mainWindow.webContents.send('initializing', true);
 
@@ -261,7 +292,7 @@ const createWindow = async () => {
 
   // Remove this if your app does not use auto updates
   // eslint-disable-next-line
-  new AppUpdater();
+  //   new AppUpdater();
 };
 
 /**

@@ -16,6 +16,8 @@ export function Prompt(props) {
     '5',
     '--n_samples',
     '1',
+    '--seed',
+    '42',
   ];
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,6 +26,7 @@ export function Prompt(props) {
   const [outDir, setOutDir] = useState(props.outDir);
   const [ddimSteps, setDdimSteps] = useState(5);
   const [numSamples, setNumSamples] = useState(1);
+  const [seed, setSeed] = useState(42);
   const [plms, setPlms] = useState('on');
   const [weights, setWeights] = useState(props.weightDir);
   const [error, setError] = useState(false);
@@ -50,6 +53,7 @@ export function Prompt(props) {
     setNumSamples(1);
     setDdimSteps(5);
     setWeights(props.weightDir);
+    setSeed(42);
     setArgs(defaultArgs);
   };
 
@@ -125,7 +129,7 @@ export function Prompt(props) {
               className="block text-sm font-medium text-gray-700"
             >
               DDIM sampling steps. This will make the biggest difference to the
-              quality of your image, but takes time. I recommend 50.
+              quality of your image, but takes time. I recommend 25-50.
             </label>
             <input
               id="--ddim_steps"
@@ -173,13 +177,33 @@ export function Prompt(props) {
               className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
           </div>
+
+          <div>
+            <label
+              htmlFor="outdir"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Seed number?
+            </label>
+            <div className="mt-1">
+              <input
+                type="number"
+                name="--seed"
+                id="seed"
+                value={seed}
+                className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                onChange={(e) => setSeed(e.target.value)}
+                placeholder={seed}
+              />
+            </div>
+          </div>
+
           <div>
             <label
               htmlFor="weights"
               className="block text-sm font-medium text-gray-700"
             >
-              Where are your weights stored? Don&apos;t worry about this if you
-              downloaded the full version. You can download weights{' '}
+              Where are your weights stored? You can download weights{' '}
               <button
                 type="button"
                 onClick={() =>
@@ -397,6 +421,7 @@ const Main = () => {
   const [logs, setLogs] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [weightsExist, setWeightsExist] = useState(true);
+  const [weightProgress, setWeightProgess] = useState(0);
 
   window.electron.ipcRenderer.on('stdout-message', (message) => {
     setLogs([message, ...logs]);
@@ -404,6 +429,15 @@ const Main = () => {
 
   window.electron.ipcRenderer.on('no-weights', (message) => {
     setWeightsExist(false);
+  });
+
+  window.electron.ipcRenderer.on('download-progress', (progress) => {
+    setWeightProgess(Math.round(progress.percent * 100).toString());
+  });
+
+  window.electron.ipcRenderer.on('download-complete', (progress) => {
+    setWeightProgess(100);
+    setWeightsExist(true);
   });
 
   const handleKeyPress = (e) => {
@@ -502,7 +536,7 @@ const Main = () => {
           )}
 
           <div className={`${showGallery ? 'hidden' : ''}`}>
-            {outDir !== '' ? (
+            {outDir !== '' && weightsExist ? (
               <Prompt
                 weightDir={weightDir}
                 outDir={outDir}
@@ -516,6 +550,22 @@ const Main = () => {
             <Image />
           </div>
         </div>
+
+        {!weightsExist && (
+          <div className="text-center mt-4">
+            <p className="font-bold">Downloading weights...{weightProgress}%</p>
+            <>
+              <div className="my-4 w-full bg-gray-200 rounded-full h-2.5 mb-4 ">
+                <div
+                  className="bg-blue-600 h-2.5 rounded-full "
+                  style={{ width: `${weightProgress}%` }}
+                >
+                  <span className="sr-only">${weightProgress}</span>
+                </div>
+              </div>
+            </>
+          </div>
+        )}
 
         {/* Show Logs Button */}
         <div className="z-10 fixed bottom-4 right-4">

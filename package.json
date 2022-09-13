@@ -11,10 +11,6 @@
     "hot",
     "reload"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/electron-react-boilerplate/electron-react-boilerplate.git"
-  },
   "license": "MIT",
   "main": "./src/main/main.ts",
   "scripts": {
@@ -30,8 +26,7 @@
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only .",
     "start:preload": "cross-env NODE_ENV=development TS_NODE_TRANSPILE_ONLY=true webpack --config ./.erb/configs/webpack.config.preload.dev.ts",
     "start:renderer": "cross-env NODE_ENV=development TS_NODE_TRANSPILE_ONLY=true webpack serve --config ./.erb/configs/webpack.config.renderer.dev.ts",
-    "test": "jest",
-    "release": "electron-builder --publish"
+    "test": "jest"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
@@ -96,8 +91,8 @@
     "@headlessui/react": "^1.7.0",
     "@tailwindcss/forms": "^0.5.3",
     "electron-debug": "^3.2.0",
+    "electron-dl": "^3.3.1",
     "electron-log": "^4.4.8",
-    "electron-updater": "^5.2.2",
     "react": "^18.2.0",
     "react-confetti": "^6.1.0",
     "react-confetti-explosion": "^1.0.3",
