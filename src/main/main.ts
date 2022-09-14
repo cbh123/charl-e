@@ -18,6 +18,7 @@ const { download } = require('electron-dl');
 
 const fs = require('fs');
 const os = require('os');
+require('dotenv').config();
 
 const DEFAULT_OUTDIR = `${os.homedir()}/Desktop/charl-e/samples`;
 const MODEL_DIR = `${os.homedir()}/Desktop/charl-e/models/model.ckpt`;
@@ -25,12 +26,6 @@ const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
 let charle = null;
 process.env.PYTORCH_ENABLE_MPS_FALLBACK = 1;
 process.env.INCLUDE_WEIGHTS = false;
-
-let win;
-(async () => {
-  await app.whenReady();
-  win = new BrowserWindow();
-})();
 
 function getLatestImage(filepath: string) {
   if (!fs.existsSync(filepath)) {
@@ -122,8 +117,9 @@ const installWeights = async (mainWindow) => {
     console.log('Already downloaded!');
     return;
   }
+  console.log('weights', process.env.CHECKPOINT_URL);
 
-  await electronDl.download(win, process.env.CHECKPOINT_URL, {
+  await electronDl.download(mainWindow, process.env.CHECKPOINT_URL, {
     directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
     filename: 'checkpoint_liberty_with_aug.pth',
     onProgress: (progress) => {
@@ -134,7 +130,7 @@ const installWeights = async (mainWindow) => {
     },
   });
 
-  await electronDl.download(win, process.env.WEIGHTS_URL, {
+  await electronDl.download(mainWindow, process.env.WEIGHTS_URL, {
     directory: `${process.resourcesPath}/stable_diffusion/models/`,
     filename: 'model.ckpt',
     onProgress: (progress) => {
