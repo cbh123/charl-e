@@ -57,6 +57,12 @@ export function Prompt(props) {
     setArgs(defaultArgs);
   };
 
+  const handleReDownload = async (e) => {
+    console.log('calling');
+    window.electron.ipcRenderer.sendMessage('redownload-weights', {});
+    setShowOptions(false);
+  };
+
   const handleCancel = async (e) => {
     window.electron.ipcRenderer.sendMessage('cancel-run', {});
     setLoading(false);
@@ -99,7 +105,7 @@ export function Prompt(props) {
       {showOptions ? (
         <form
           id="options-form"
-          className="z-20 mt-4 space-y-4 bg-gray-50 shadow-xl border border-gray-100 p-4 rounded-lg"
+          className="z-20 mt-4 mb-20 space-y-4 bg-gray-50 shadow-xl border border-gray-100 p-4 rounded-lg"
           onSubmit={handleOptionsSubmit}
         >
           <h1 className="font-bold text-gray-800 font-mono">CHARL-E Options</h1>
@@ -229,6 +235,15 @@ export function Prompt(props) {
                 onChange={(e) => setWeights(e.target.value)}
                 placeholder={weights}
               />
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={handleReDownload}
+                className="mt-2 text-center rounded-md bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 px-3 py-2 text-sm font-medium leading-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              >
+                Re-Download Weights
+              </button>
             </div>
           </div>
           <div className="flex">
@@ -436,6 +451,7 @@ const Main = () => {
 
   window.electron.ipcRenderer.on('download-progress', (progress) => {
     setWeightProgess(Math.round(progress.percent * 100).toString());
+    setWeightsExist(false);
   });
 
   window.electron.ipcRenderer.on('default-outdir', (paths) => {
@@ -609,7 +625,7 @@ const Main = () => {
       {showLogs && (
         <div className="bg-gray-800 font-mono text-green-200 px-4 py-2 rounded-lg overflow-x-scroll w-full fixed bottom-0 -mb-4 h-1/2 z-0">
           <div className="text-green-300 flex justify-between">
-            <p>CHARL-E</p>
+            <p>CHARL-E v0.0.2</p>
 
             <p className="animate-pulse">{new Date().toLocaleTimeString()}</p>
           </div>

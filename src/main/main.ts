@@ -10,6 +10,7 @@
  */
 import path from 'path';
 import { app, BrowserWindow, shell, ipcMain, protocol } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
@@ -26,6 +27,15 @@ const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
 let charle = null;
 process.env.PYTORCH_ENABLE_MPS_FALLBACK = 1;
 process.env.INCLUDE_WEIGHTS = false;
+
+export default class AppUpdater {
+  constructor() {
+    const log = require('electron-log');
+    log.transports.file.level = 'debug';
+    autoUpdater.logger = log;
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+}
 
 function getLatestImage(filepath: string) {
   if (!fs.existsSync(filepath)) {
@@ -122,11 +132,12 @@ const installWeights = async (mainWindow) => {
   await electronDl.download(mainWindow, process.env.CHECKPOINT_URL, {
     directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
     filename: 'checkpoint_liberty_with_aug.pth',
-    onProgress: (progress) => {
-      console.log(progress);
-    },
     onCompleted: (progress) => {
       console.log('Download checkpoint complete');
+      mainWindow.webContents.send(
+        'stdout-message',
+        `Download Checkpoint Complete`
+      );
     },
   });
 
@@ -136,6 +147,10 @@ const installWeights = async (mainWindow) => {
     onProgress: (progress) => {
       console.log(progress);
       mainWindow.webContents.send('download-progress', progress);
+      mainWindow.webContents.send(
+        'stdout-message',
+        `Download weights: ${progress.transferredBytes} / ${progress.totalBytes}`
+      );
     },
     onCompleted: (progress) => {
       console.log('Download complete');
@@ -197,6 +212,20 @@ const createWindow = async () => {
 
   ipcMain.on('open-file', (event, file) => {
     shell.showItemInFolder(file.replace('media-loader:/', ''));
+  });
+
+  ipcMain.on('redownload-weights', (event, _args) => {
+    console.log('CALLED');
+    if (
+      fs.existsSync(
+        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+      )
+    ) {
+      fs.unlinkSync(
+        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+      );
+    }
+    installWeights(mainWindow);
   });
 
   ipcMain.on('run-prompt', (event, { prompt, args }) => {

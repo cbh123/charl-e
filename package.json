@@ -1,18 +1,7 @@
 {
-  "description": "A foundation for scalable desktop apps",
-  "keywords": [
-    "electron",
-    "boilerplate",
-    "react",
-    "typescript",
-    "ts",
-    "sass",
-    "webpack",
-    "hot",
-    "reload"
-  ],
-  "license": "MIT",
   "main": "./src/main/main.ts",
+  "version": "0.0.2",
+  "name": "charl-e",
   "scripts": {
     "build": "concurrently \"npm run build:main\" \"npm run build:renderer\"",
     "build:main": "cross-env NODE_ENV=production TS_NODE_TRANSPILE_ONLY=true webpack --config ./.erb/configs/webpack.config.main.prod.ts",
@@ -26,7 +15,8 @@
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only .",
     "start:preload": "cross-env NODE_ENV=development TS_NODE_TRANSPILE_ONLY=true webpack --config ./.erb/configs/webpack.config.preload.dev.ts",
     "start:renderer": "cross-env NODE_ENV=development TS_NODE_TRANSPILE_ONLY=true webpack serve --config ./.erb/configs/webpack.config.renderer.dev.ts",
-    "test": "jest"
+    "test": "jest",
+    "publish": "electron-builder -p always"
   },
   "lint-staged": {
     "*.{js,jsx,ts,tsx}": [
@@ -93,6 +83,7 @@
     "electron-debug": "^3.2.0",
     "electron-dl": "^3.3.1",
     "electron-log": "^4.4.8",
+    "electron-updater": "^5.2.1",
     "react": "^18.2.0",
     "react-confetti": "^6.1.0",
     "react-confetti-explosion": "^1.0.3",
@@ -175,6 +166,13 @@
     "webpack-merge": "^5.8.0"
   },
   "build": {
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "cbh123",
+        "repo": "charl-e"
+      }
+    ],
     "productName": "CHARL-E",
     "appId": "org.erb.ElectronReact",
     "asar": true,
