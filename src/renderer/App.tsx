@@ -68,16 +68,24 @@ export function Prompt(props) {
     setLoading(false);
   };
 
+  const objectToList = (args: Object) => {
+    const res: string[] = Object.entries(args)
+      .flat()
+      .filter((item) => item !== 'on');
+    return res;
+  };
+
   const handleOptionsSubmit = (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
 
-    const res: string[] = Object.entries(Object.fromEntries(formData))
-      .flat()
-      .filter((item) => item !== 'on');
+    window.electron.ipcRenderer.sendMessage(
+      'save-options',
+      Object.fromEntries(formData)
+    );
 
+    const res = objectToList(Object.fromEntries(formData));
     setArgs(res);
-    console.log(args);
     setShowOptions(false);
   };
 
@@ -92,6 +100,16 @@ export function Prompt(props) {
 
   useEffect(() => {
     setShowOptions(props.showOptions);
+
+    setOutDir(props.options['--outdir']);
+    setPlms(props.options['--plms']);
+    setNumSamples(props.options['--n_samples']);
+    setDdimSteps(props.options['--ddim_steps']);
+    setWeights(props.options['--ckpt']);
+    setSeed(props.options['--seed']);
+
+    const res = objectToList(props.options);
+    setArgs(res);
   }, [props.outDir, props.showOptions, props.weightDir]);
 
   return (
@@ -440,6 +458,7 @@ const Main = () => {
   const [showGallery, setShowGallery] = useState(false);
   const [weightsExist, setWeightsExist] = useState(true);
   const [weightProgress, setWeightProgess] = useState(0);
+  const [options, setOptions] = useState({});
 
   window.electron.ipcRenderer.on('stdout-message', (message) => {
     setLogs([message, ...logs]);
@@ -458,6 +477,7 @@ const Main = () => {
     setOutDir(paths.outDir);
     setImages(paths.allImages.reverse());
     setWeightDir(paths.weights);
+    console.log('Loaded outdir');
   });
 
   window.electron.ipcRenderer.on('download-complete', (progress) => {
@@ -487,13 +507,18 @@ const Main = () => {
     }
   };
 
+  window.electron.ipcRenderer.on('loaded-options', (options) => {
+    setOptions(options);
+    console.log(`front end loaded options ${JSON.stringify(options)}`);
+  });
+
   useEffect(() => {
     window.electron.ipcRenderer.on('default-outdir', (paths) => {
       setOutDir(paths.outDir);
       setImages(paths.allImages.reverse());
       setWeightDir(paths.weights);
     });
-  }, [outDir, images, weightDir]); // 👈️ add state variables you want to track
+  }, [outDir, images, weightDir, options]); // 👈️ add state variables you want to track
 
   const viewImage = (file: string) => {
     window.electron.ipcRenderer.sendMessage('open-file', file);
@@ -583,6 +608,7 @@ const Main = () => {
                   weightDir={weightDir}
                   outDir={outDir}
                   showOptions={showOptions}
+                  options={options}
                 />
               ) : (
                 'Loading...'
@@ -625,7 +651,7 @@ const Main = () => {
       {showLogs && (
         <div className="bg-gray-800 font-mono text-green-200 px-4 py-2 rounded-lg overflow-x-scroll w-full fixed bottom-0 -mb-4 h-1/2 z-0">
           <div className="text-green-300 flex justify-between">
-            <p>CHARL-E v0.0.2</p>
+            <p>CHARL-E v0.0.4</p>
 
             <p className="animate-pulse">{new Date().toLocaleTimeString()}</p>
           </div>

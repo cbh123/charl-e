@@ -57,7 +57,7 @@ export default class MenuBuilder {
       label: 'Electron',
       submenu: [
         {
-          label: 'About ElectronReact',
+          label: 'About CHARL-E',
           selector: 'orderFrontStandardAboutPanel:',
         },
         { type: 'separator' },

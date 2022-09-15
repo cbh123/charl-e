@@ -16,6 +16,7 @@ import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
 const electronDl = require('electron-dl');
 const { download } = require('electron-dl');
+const Store = require('electron-store');
 
 const fs = require('fs');
 const os = require('os');
@@ -27,6 +28,7 @@ const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
 let charle = null;
 process.env.PYTORCH_ENABLE_MPS_FALLBACK = 1;
 process.env.INCLUDE_WEIGHTS = false;
+const store = new Store();
 
 export default class AppUpdater {
   constructor() {
@@ -119,8 +121,6 @@ const installExtensions = async () => {
 };
 
 const installWeights = async (mainWindow) => {
-  console.log('Downloading...');
-
   if (
     fs.existsSync(`${process.resourcesPath}/stable_diffusion/models/model.ckpt`)
   ) {
@@ -129,34 +129,42 @@ const installWeights = async (mainWindow) => {
   }
   console.log('weights', process.env.CHECKPOINT_URL);
 
-  await electronDl.download(mainWindow, process.env.CHECKPOINT_URL, {
-    directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
-    filename: 'checkpoint_liberty_with_aug.pth',
-    onCompleted: (progress) => {
-      console.log('Download checkpoint complete');
-      mainWindow.webContents.send(
-        'stdout-message',
-        `Download Checkpoint Complete`
-      );
-    },
-  });
+  await electronDl.download(
+    mainWindow,
+    'https://charle.s3.amazonaws.com/checkpoint_liberty_with_aug.pth',
+    {
+      directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
+      filename: 'checkpoint_liberty_with_aug.pth',
+      onCompleted: (progress) => {
+        console.log('Download checkpoint complete');
+        mainWindow.webContents.send(
+          'stdout-message',
+          `Download Checkpoint Complete`
+        );
+      },
+    }
+  );
 
-  await electronDl.download(mainWindow, process.env.WEIGHTS_URL, {
-    directory: `${process.resourcesPath}/stable_diffusion/models/`,
-    filename: 'model.ckpt',
-    onProgress: (progress) => {
-      console.log(progress);
-      mainWindow.webContents.send('download-progress', progress);
-      mainWindow.webContents.send(
-        'stdout-message',
-        `Download weights: ${progress.transferredBytes} / ${progress.totalBytes}`
-      );
-    },
-    onCompleted: (progress) => {
-      console.log('Download complete');
-      mainWindow.webContents.send('download-complete', progress);
-    },
-  });
+  await electronDl.download(
+    mainWindow,
+    'https://me.cmdr2.org/stable-diffusion-ui/sd-v1-4.ckpt',
+    {
+      directory: `${process.resourcesPath}/stable_diffusion/models/`,
+      filename: 'model.ckpt',
+      onProgress: (progress) => {
+        console.log(progress);
+        mainWindow.webContents.send('download-progress', progress);
+        mainWindow.webContents.send(
+          'stdout-message',
+          `Download weights: ${progress.transferredBytes} / ${progress.totalBytes}`
+        );
+      },
+      onCompleted: (progress) => {
+        console.log('Download complete');
+        mainWindow.webContents.send('download-complete', progress);
+      },
+    }
+  );
 };
 
 const createWindow = async () => {
@@ -189,10 +197,7 @@ const createWindow = async () => {
     // If we want to load recent images on load
     // mainWindow.webContents.send("image-load", getLatestImage(DEFAULT_OUTDIR));
 
-    const obj = {
-      ...getLatestImage(DEFAULT_OUTDIR),
-      ...getPaths(`${process.resourcesPath}/stable_diffusion/txt2img`),
-    };
+    mainWindow.webContents.send('loaded-options', store.get('options'));
 
     mainWindow.webContents.send('default-outdir', {
       ...getLatestImage(DEFAULT_OUTDIR),
@@ -228,18 +233,26 @@ const createWindow = async () => {
     installWeights(mainWindow);
   });
 
-  ipcMain.on('run-prompt', (event, { prompt, args }) => {
-    console.log('PROMPT: ', prompt);
-    console.log('ARGS: ', args);
+  ipcMain.on('save-options', (event, args) => {
+    store.set('options', args);
+    mainWindow.webContents.send(
+      'stdout-message',
+      `Options Saved: ${JSON.stringify(args)}`
+    );
 
+    mainWindow.webContents.send('loaded-options', store.get('options'));
+  });
+
+  ipcMain.on('run-prompt', (event, { prompt, args }) => {
     mainWindow.webContents.send('initializing', true);
 
     const { config, executable, weights } = getPaths(
       `${process.resourcesPath}/stable_diffusion/txt2img`
     );
-    const execArgs = ['--prompt', prompt, ...args, '--config', config];
 
-    console.log(execArgs);
+    const execArgs = ['--prompt', prompt, ...args, '--config', config];
+    mainWindow.webContents.send('stdout-message', `Params: ${args}`);
+
     const child = require('child_process');
     charle = child.spawn(executable, execArgs, {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
@@ -316,8 +329,10 @@ const createWindow = async () => {
 
   // Remove this if your app does not use auto updates
   // eslint-disable-next-line
-  //   new AppUpdater();
+  new AppUpdater();
 };
+
+console.log(app.getPath('userData'));
 
 /**
  * Add event listeners...
