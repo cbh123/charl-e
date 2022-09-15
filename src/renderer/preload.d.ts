@@ -4,7 +4,7 @@ declare global {
   interface Window {
     electron: {
       ipcRenderer: {
-        runPrompt(prompt: []): void;
+        runPrompt(prompt: string): void;
         sendMessage(channel: Channels, args: unknown[]): void;
         on(
           channel: string,

@@ -11,11 +11,9 @@
 import path from 'path';
 import { app, BrowserWindow, shell, ipcMain, protocol } from 'electron';
 import { autoUpdater } from 'electron-updater';
-import log from 'electron-log';
 import MenuBuilder from './menu';
 import { resolveHtmlPath } from './util';
 const electronDl = require('electron-dl');
-const { download } = require('electron-dl');
 const Store = require('electron-store');
 
 const fs = require('fs');
@@ -23,12 +21,10 @@ const os = require('os');
 require('dotenv').config();
 
 const DEFAULT_OUTDIR = `${os.homedir()}/Desktop/charl-e/samples`;
-const MODEL_DIR = `${os.homedir()}/Desktop/charl-e/models/model.ckpt`;
 const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
-let charle = null;
-process.env.PYTORCH_ENABLE_MPS_FALLBACK = 1;
-process.env.INCLUDE_WEIGHTS = false;
 const store = new Store();
+let charle: any = null;
+process.env.PYTORCH_ENABLE_MPS_FALLBACK = '1';
 
 export default class AppUpdater {
   constructor() {
@@ -44,12 +40,11 @@ function getLatestImage(filepath: string) {
     console.log(filepath);
     fs.mkdirSync(filepath, { recursive: true });
   }
-
   const dirents = fs.readdirSync(filepath, { withFileTypes: true });
 
   const fileNames = dirents
-    .filter((dirent) => dirent.isFile())
-    .map(function (fileName) {
+    .filter((dirent: any) => dirent.isFile())
+    .map(function (fileName: any) {
       return {
         name: fileName.name,
         time: fs.statSync(`${filepath}/${fileName.name}`).mtime.getTime(),
@@ -58,14 +53,14 @@ function getLatestImage(filepath: string) {
     .sort(function (a, b) {
       return a.time - b.time;
     })
-    .map((file) => file.name);
+    .map((file: any) => file.name);
 
   return {
     latestImage: `${filepath}/${fileNames.at(-1)}`,
     outDir: filepath,
     allImages: fileNames
-      .map((file) => `${filepath}/${file}`)
-      .filter((file) => file.endsWith('.png')),
+      .map((file: string) => `${filepath}/${file}`)
+      .filter((file: string) => file.endsWith('.png')),
   };
 }
 
@@ -75,15 +70,12 @@ function getPaths(filepath: string) {
     return {
       config: `${process.resourcesPath}/stable_diffusion/configs/v1-inference.yaml`,
       executable: filepath,
-      // the following depends on if we're in with weights or not weights mode!
-      weights: `${process.resourcesPath}/stable_diffusion/models/model.ckpt`,
     };
     // we're in dev
   }
   return {
     config: CONFIG_DIR,
     executable: './stable_diffusion/txt2img',
-    weights: `${process.resourcesPath}/stable_diffusion/models/model.ckpt`,
   };
 }
 
@@ -120,14 +112,15 @@ const installExtensions = async () => {
     .catch(console.log);
 };
 
-const installWeights = async (mainWindow) => {
+const installWeights = async (mainWindow: BrowserWindow) => {
   if (
-    fs.existsSync(`${process.resourcesPath}/stable_diffusion/models/model.ckpt`)
+    fs.existsSync(
+      `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
+    )
   ) {
     console.log('Already downloaded!');
     return;
   }
-  console.log('weights', process.env.CHECKPOINT_URL);
 
   await electronDl.download(
     mainWindow,
@@ -135,7 +128,7 @@ const installWeights = async (mainWindow) => {
     {
       directory: `${os.homedir()}/.cache/torch/hub/checkpoints/`,
       filename: 'checkpoint_liberty_with_aug.pth',
-      onCompleted: (progress) => {
+      onCompleted: () => {
         console.log('Download checkpoint complete');
         mainWindow.webContents.send(
           'stdout-message',
@@ -149,9 +142,9 @@ const installWeights = async (mainWindow) => {
     mainWindow,
     'https://me.cmdr2.org/stable-diffusion-ui/sd-v1-4.ckpt',
     {
-      directory: `${process.resourcesPath}/stable_diffusion/models/`,
+      directory: `${app.getPath('userData')}/stable_diffusion/models/`,
       filename: 'model.ckpt',
-      onProgress: (progress) => {
+      onProgress: (progress: any) => {
         console.log(progress);
         mainWindow.webContents.send('download-progress', progress);
         mainWindow.webContents.send(
@@ -159,12 +152,31 @@ const installWeights = async (mainWindow) => {
           `Download weights: ${progress.transferredBytes} / ${progress.totalBytes}`
         );
       },
-      onCompleted: (progress) => {
+      onCompleted: (progress: any) => {
         console.log('Download complete');
         mainWindow.webContents.send('download-complete', progress);
       },
     }
   );
+};
+
+const objectToList = (args: Object) => {
+  if (args['--plms'] == 'off') {
+    delete args['--plms'];
+  }
+  const res: string[] = Object.entries(args)
+    .flat()
+    .filter((item) => item !== 'on');
+  return res;
+};
+
+const savePrompt = async ({ prompt, image, command }) => {
+  const promptHistory = store.get('prompts') ? store.get('prompts') : [];
+  const commandHistory = store.get('commands') ? store.get('commands') : [];
+  const imageHistory = store.get('images') ? store.get('images') : [];
+  store.set('prompts', [prompt, ...promptHistory]);
+  store.set('commands', [command, ...commandHistory]);
+  store.set('images', [image, ...imageHistory]);
 };
 
 const createWindow = async () => {
@@ -197,76 +209,89 @@ const createWindow = async () => {
     // If we want to load recent images on load
     // mainWindow.webContents.send("image-load", getLatestImage(DEFAULT_OUTDIR));
 
-    mainWindow.webContents.send('loaded-options', store.get('options'));
+    const currentOptions = store.get('options');
 
-    mainWindow.webContents.send('default-outdir', {
-      ...getLatestImage(DEFAULT_OUTDIR),
-      ...getPaths(`${process.resourcesPath}/stable_diffusion/txt2img`),
-    });
+    if (currentOptions == null) {
+      console.log('options undefined');
+      store.set('options', {
+        '--ckpt': `${app.getPath(
+          'userData'
+        )}/stable_diffusion/models/model.ckpt`,
+        '--plms': 'off',
+        '--ddim_steps': '5',
+        '--n_samples': '1',
+        '--outdir': `${os.homedir()}/Desktop/charl-e/samples`,
+        '--seed': '42',
+      });
+    } else {
+      mainWindow!.webContents.send('loaded-options', store.get('options'));
+    }
 
     if (
       !fs.existsSync(
-        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+        `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
       )
     ) {
-      console.log(`${process.resourcesPath}`);
-      mainWindow.webContents.send('no-weights', {});
-      installWeights(mainWindow);
+      console.log(`${app.getPath('userData')}`);
+      mainWindow!.webContents.send('no-weights', {});
+      installWeights(mainWindow!);
     }
+
+    mainWindow!.webContents.send('image-dir', getLatestImage(DEFAULT_OUTDIR));
   });
 
-  ipcMain.on('open-file', (event, file) => {
+  ipcMain.on('open-file', (_event, file) => {
     shell.showItemInFolder(file.replace('media-loader:/', ''));
   });
 
-  ipcMain.on('redownload-weights', (event, _args) => {
+  ipcMain.on('redownload-weights', (_event, _args) => {
     console.log('CALLED');
     if (
       fs.existsSync(
-        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+        `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
       )
     ) {
       fs.unlinkSync(
-        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+        `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
       );
     }
-    installWeights(mainWindow);
+    installWeights(mainWindow!);
   });
 
-  ipcMain.on('save-options', (event, args) => {
+  ipcMain.on('save-options', (_event, args) => {
     store.set('options', args);
-    mainWindow.webContents.send(
+    mainWindow!.webContents.send(
       'stdout-message',
       `Options Saved: ${JSON.stringify(args)}`
     );
 
-    mainWindow.webContents.send('loaded-options', store.get('options'));
+    mainWindow!.webContents.send('loaded-options', store.get('options'));
   });
 
-  ipcMain.on('run-prompt', (event, { prompt, args }) => {
-    mainWindow.webContents.send('initializing', true);
+  ipcMain.on('run-prompt', (_event, { prompt }) => {
+    mainWindow!.webContents.send('initializing', true);
 
-    const { config, executable, weights } = getPaths(
+    const { config, executable } = getPaths(
       `${process.resourcesPath}/stable_diffusion/txt2img`
     );
 
+    const args = objectToList(store.get('options'));
     const execArgs = ['--prompt', prompt, ...args, '--config', config];
-    mainWindow.webContents.send('stdout-message', `Params: ${args}`);
+
+    mainWindow!.webContents.send('stdout-message', `Params: ${execArgs}`);
 
     const child = require('child_process');
     charle = child.spawn(executable, execArgs, {
       stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
     });
 
-    charle.stderr.on('data', (data) => {
+    charle.stderr.on('data', (data: any) => {
       if (data.toString().includes('Sampler: ')) {
         const pct = data.toString().split(':')[1].split('%')[0].trim();
-        mainWindow.webContents.send('initializing', false);
-        mainWindow.webContents.send('loading-update', pct);
+        mainWindow!.webContents.send('initializing', false);
+        mainWindow!.webContents.send('loading-update', pct);
       }
-      console.log(data.toString());
-
-      mainWindow.webContents.send('stdout-message', data.toString());
+      mainWindow!.webContents.send('stdout-message', data.toString());
     });
 
     charle.on('close', () => {
@@ -274,10 +299,10 @@ const createWindow = async () => {
       console.log('stats', charle.exitCode);
 
       if (charle.killed) {
-        mainWindow.webContents.send('killed', true);
+        mainWindow!.webContents.send('killed', true);
       } else if (charle.exitCode === 1) {
-        mainWindow.webContents.send('error', true);
-        mainWindow.webContents.send('killed', true);
+        mainWindow!.webContents.send('error', true);
+        mainWindow!.webContents.send('killed', true);
       } else if (charle.exitCode === 0) {
         const outpathLocation = execArgs.findIndex((x) => x == '--outdir');
         const outpath =
@@ -287,17 +312,23 @@ const createWindow = async () => {
         console.log(
           `Sending ${getLatestImage(outpath).latestImage} to frontend`
         );
-        mainWindow.webContents.send(
+        mainWindow!.webContents.send(
           'image-load',
           getLatestImage(outpath).latestImage
         );
+
+        savePrompt({
+          prompt: prompt,
+          image: getLatestImage(outpath).latestImage,
+          command: execArgs,
+        });
       } else {
-        mainWindow.webContents.send('error', true);
+        mainWindow!.webContents.send('error', true);
       }
     });
   });
 
-  ipcMain.on('cancel-run', (event, value) => {
+  ipcMain.on('cancel-run', (_event, _value) => {
     charle.kill();
   });
 
@@ -355,8 +386,8 @@ app
       try {
         return callback(url);
       } catch (err) {
-        console.error(error);
-        return callback(404);
+        console.error(err);
+        return callback('404');
       }
     });
 
