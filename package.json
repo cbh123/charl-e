@@ -1,6 +1,6 @@
 {
   "main": "./src/main/main.ts",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "name": "charl-e",
   "scripts": {
     "build": "concurrently \"npm run build:main\" \"npm run build:renderer\"",
@@ -89,6 +89,7 @@
     "react-confetti": "^6.1.0",
     "react-confetti-explosion": "^1.0.3",
     "react-dom": "^18.2.0",
+    "react-hot-toast": "^2.4.0",
     "react-router-dom": "^6.3.0",
     "styled-components": "^5.3.5",
     "update-electron-app": "^2.0.1"

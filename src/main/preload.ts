@@ -1,5 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import { shell } from 'electron';
+import { contextBridge, ipcRenderer, IpcRendererEvent, shell } from 'electron';
 
 export type Channels = 'ipc-example';
 

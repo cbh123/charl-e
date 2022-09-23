@@ -20,8 +20,17 @@ const fs = require('fs');
 const os = require('os');
 require('dotenv').config();
 
-const DEFAULT_OUTDIR = `${os.homedir()}/Desktop/charl-e/samples`;
 const CONFIG_DIR = `./stable_diffusion/configs/v1-inference.yaml`;
+const APPROX_WEIGHT_SIZE = 4100000000;
+const DEFAULT_OPTIONS = {
+  '--ckpt': `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`,
+  '--plms': 'off',
+  '--ddim_steps': '5',
+  '--n_samples': '1',
+  '--outdir': `${os.homedir()}/Desktop/charl-e/samples`,
+  '--seed': '42',
+};
+
 const store = new Store();
 let charle: any = null;
 process.env.PYTORCH_ENABLE_MPS_FALLBACK = '1';
@@ -37,7 +46,7 @@ export default class AppUpdater {
 
 function getLatestImage(filepath: string) {
   if (!fs.existsSync(filepath)) {
-    console.log(filepath);
+    console.log('making dir', filepath);
     fs.mkdirSync(filepath, { recursive: true });
   }
   const dirents = fs.readdirSync(filepath, { withFileTypes: true });
@@ -53,14 +62,14 @@ function getLatestImage(filepath: string) {
     .sort(function (a, b) {
       return a.time - b.time;
     })
-    .map((file: any) => file.name);
+    .map((file: any) => file.name)
+    .map((file: string) => `${filepath}/${file}`)
+    .filter((file: string) => file.endsWith('.png'));
 
   return {
-    latestImage: `${filepath}/${fileNames.at(-1)}`,
+    latestImage: fileNames.at(-1),
     outDir: filepath,
-    allImages: fileNames
-      .map((file: string) => `${filepath}/${file}`)
-      .filter((file: string) => file.endsWith('.png')),
+    history: store.get('history', []),
   };
 }
 
@@ -75,7 +84,7 @@ function getPaths(filepath: string) {
   }
   return {
     config: CONFIG_DIR,
-    executable: './stable_diffusion/txt2img',
+    executable: './stable_diffusion/text2image.bin',
   };
 }
 
@@ -118,8 +127,15 @@ const installWeights = async (mainWindow: BrowserWindow) => {
       `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
     )
   ) {
-    console.log('Already downloaded!');
     return;
+  }
+  //delete if old weights exist
+  if (
+    fs.existsSync(`${process.resourcesPath}/stable_diffusion/models/model.ckpt`)
+  ) {
+    fs.unlinkSync(
+      `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+    );
   }
 
   await electronDl.download(
@@ -171,12 +187,11 @@ const objectToList = (args: Object) => {
 };
 
 const savePrompt = async ({ prompt, image, command }) => {
-  const promptHistory = store.get('prompts') ? store.get('prompts') : [];
-  const commandHistory = store.get('commands') ? store.get('commands') : [];
-  const imageHistory = store.get('images') ? store.get('images') : [];
-  store.set('prompts', [prompt, ...promptHistory]);
-  store.set('commands', [command, ...commandHistory]);
-  store.set('images', [image, ...imageHistory]);
+  const history = store.get('history') ? store.get('history') : [];
+  store.set('history', [
+    { prompt: prompt, command: command, image: image },
+    ...history,
+  ]);
 };
 
 const createWindow = async () => {
@@ -206,46 +221,49 @@ const createWindow = async () => {
   });
 
   mainWindow.webContents.on('did-finish-load', () => {
-    // If we want to load recent images on load
-    // mainWindow.webContents.send("image-load", getLatestImage(DEFAULT_OUTDIR));
-
     const currentOptions = store.get('options');
 
     if (currentOptions == null) {
-      console.log('options undefined');
-      store.set('options', {
-        '--ckpt': `${app.getPath(
-          'userData'
-        )}/stable_diffusion/models/model.ckpt`,
-        '--plms': 'off',
-        '--ddim_steps': '5',
-        '--n_samples': '1',
-        '--outdir': `${os.homedir()}/Desktop/charl-e/samples`,
-        '--seed': '42',
-      });
-    } else {
-      mainWindow!.webContents.send('loaded-options', store.get('options'));
+      store.set('options', DEFAULT_OPTIONS);
     }
+    mainWindow!.webContents.send('loaded-options', store.get('options'));
 
+    // if the weights don't exist, download them
     if (
       !fs.existsSync(
         `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
       )
     ) {
-      console.log(`${app.getPath('userData')}`);
       mainWindow!.webContents.send('no-weights', {});
       installWeights(mainWindow!);
+      // if the weights do exist, make sure they're downloaded
+    } else {
+      if (
+        fs.statSync(
+          `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
+        ).size < APPROX_WEIGHT_SIZE
+      ) {
+        mainWindow!.webContents.send('partial-weights', {});
+      }
     }
 
-    mainWindow!.webContents.send('image-dir', getLatestImage(DEFAULT_OUTDIR));
+    mainWindow!.webContents.send(
+      'image-dir',
+      getLatestImage(store.get('options')['--outdir'])
+    );
   });
 
   ipcMain.on('open-file', (_event, file) => {
     shell.showItemInFolder(file.replace('media-loader:/', ''));
   });
 
+  ipcMain.on('reset-options', (_event, _args) => {
+    store.set('options', DEFAULT_OPTIONS);
+    mainWindow!.webContents.send('loaded-options', DEFAULT_OPTIONS);
+  });
+
   ipcMain.on('redownload-weights', (_event, _args) => {
-    console.log('CALLED');
+    // delete what we currently have
     if (
       fs.existsSync(
         `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
@@ -253,6 +271,17 @@ const createWindow = async () => {
     ) {
       fs.unlinkSync(
         `${app.getPath('userData')}/stable_diffusion/models/model.ckpt`
+      );
+    }
+
+    //delete if old weights exist
+    if (
+      fs.existsSync(
+        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
+      )
+    ) {
+      fs.unlinkSync(
+        `${process.resourcesPath}/stable_diffusion/models/model.ckpt`
       );
     }
     installWeights(mainWindow!);
@@ -305,10 +334,7 @@ const createWindow = async () => {
         mainWindow!.webContents.send('killed', true);
       } else if (charle.exitCode === 0) {
         const outpathLocation = execArgs.findIndex((x) => x == '--outdir');
-        const outpath =
-          outpathLocation == -1
-            ? DEFAULT_OUTDIR
-            : execArgs[outpathLocation + 1];
+        const outpath = execArgs[outpathLocation + 1];
         console.log(
           `Sending ${getLatestImage(outpath).latestImage} to frontend`
         );
@@ -316,12 +342,13 @@ const createWindow = async () => {
           'image-load',
           getLatestImage(outpath).latestImage
         );
-
         savePrompt({
           prompt: prompt,
           image: getLatestImage(outpath).latestImage,
           command: execArgs,
         });
+
+        mainWindow!.webContents.send('image-dir', getLatestImage(outpath));
       } else {
         mainWindow!.webContents.send('error', true);
       }

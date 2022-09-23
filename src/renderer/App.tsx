@@ -1,9 +1,10 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import 'tailwindcss/tailwind.css';
 import './App.css';
-import { useState, useEffect, Key } from 'react';
+import { useState, useEffect } from 'react';
 import Confetti from 'react-confetti';
 import Sparkles from './Sparkle';
+import toast, { Toaster } from 'react-hot-toast';
 const shell = window.electron.shellAPI;
 
 function Options(props: any) {
@@ -15,12 +16,13 @@ function Options(props: any) {
   const [weights, setWeights] = useState(props.options['--ckpt']);
 
   const reset = () => {
-    setOutDir(props.outDir);
-    setPlms('off');
-    setNumSamples(1);
-    setDdimSteps(5);
-    setWeights(props.weightDir);
-    setSeed(42);
+    window.electron.ipcRenderer.sendMessage('reset-options');
+    props.setShowOptions(false);
+    toast.success('Options Reset');
+  };
+
+  const redownload = () => {
+    window.electron.ipcRenderer.sendMessage('redownload-weights');
   };
 
   const handleOptionsSubmit = (e) => {
@@ -33,7 +35,10 @@ function Options(props: any) {
     );
 
     props.setShowOptions(false);
+    toast.success('Options Saved');
   };
+
+  useEffect(() => {}, [props.outDir]); // 👈️ add state variables you want to track
 
   return (
     <form
@@ -58,6 +63,7 @@ function Options(props: any) {
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             onChange={(e) => setOutDir(e.target.value)}
             placeholder={outDir}
+            required
           />
         </div>
       </div>
@@ -80,25 +86,8 @@ function Options(props: any) {
           placeholder="ddim_steps"
           value={ddimSteps}
           onChange={(e) => setDdimSteps(e.target.value)}
+          required
           className="block w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-        />
-      </div>
-
-      <div>
-        <label
-          htmlFor="--n_samples"
-          className="block text-sm font-medium text-gray-700"
-        >
-          How many images should I produce for each given prompt?
-        </label>
-        <input
-          id="--n_samples"
-          type="number"
-          name="--n_samples"
-          placeholder="n_samples"
-          value={numSamples}
-          onChange={(e) => setNumSamples(e.target.value)}
-          className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
         />
       </div>
 
@@ -136,6 +125,7 @@ function Options(props: any) {
             className="block w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             onChange={(e) => setSeed(e.target.value)}
             placeholder={seed}
+            required
           />
         </div>
       </div>
@@ -167,8 +157,18 @@ function Options(props: any) {
             className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             onChange={(e) => setWeights(e.target.value)}
             placeholder={weights}
+            required
           />
         </div>
+
+        <button
+          type="button"
+          data-confirm="Are you sure you want to redownload the weights?"
+          className="mt-2 text-center rounded-md bg-white text-red-600 hover:bg-gray-50 border border-gray-300 px-3 py-2 text-sm font-medium leading-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          onClick={() => redownload()}
+        >
+          Erase and Reinstall
+        </button>
       </div>
       <div className="flex">
         <button
@@ -177,7 +177,7 @@ function Options(props: any) {
           onClick={reset}
           className="w-1/2 mr-2 text-center rounded-md bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 px-3 py-2 text-sm font-medium leading-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
-          Reset
+          Set Defaults
         </button>
         <button
           id="submit"
@@ -194,6 +194,7 @@ export function Prompt() {
   const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [queue, setQueue] = useState<string[]>([]);
 
   const handlePrompt = (prompt: string) => {
     if (!loading) {
@@ -204,8 +205,22 @@ export function Prompt() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (prompt === '') {
+      return;
+    }
+
+    const newQ = prompt.split(';');
+    setQueue(newQ);
+    console.log(queue);
+
     if (!loading) {
-      window.electron.ipcRenderer.sendMessage('run-prompt', { prompt: prompt });
+      const newQueue = queue;
+      var next = newQueue.shift();
+      setQueue(newQueue);
+      console.log('queue is now', newQueue, 'running with ', next);
+      window.electron.ipcRenderer.sendMessage('run-prompt', {
+        prompt: next,
+      });
     }
     setLoading(true);
     setError(false);
@@ -218,6 +233,14 @@ export function Prompt() {
 
   window.electron.ipcRenderer.on('image-load', (file) => {
     setLoading(false);
+    if (queue.length > 0) {
+      const next = queue.shift();
+      setQueue(queue);
+      console.log('queue is now', queue);
+      window.electron.ipcRenderer.sendMessage('run-prompt', {
+        prompt: next,
+      });
+    }
   });
 
   window.electron.ipcRenderer.on('error', (error) => {
@@ -229,16 +252,15 @@ export function Prompt() {
     <div>
       {error && (
         <p className="text-red-500 font-bold">
-          Error detected! Please check the logs. Let me know choltz@hey.com if
-          it's unclear.
+          Error detected! Do you have the latest MacOS? If it still doesn't
+          work, you can email me the logs choltz@hey.com.
         </p>
       )}
       {/* // PROMPT */}
       <div>
         <div className="relative mt-1 flex items-center">
           <form className="w-full inline-flex" onSubmit={handleSubmit}>
-            <input
-              type="text"
+            <textarea
               name="search"
               id="search"
               value={prompt}
@@ -280,16 +302,23 @@ export function Prompt() {
                 </button>
               </div>
             ) : (
-              <button
-                type="submit"
-                className={`ml-2 inline-flex items-center rounded-md ${
-                  prompt === ''
-                    ? 'text-gray-200 cursor-not-allowed'
-                    : 'text-gray-700 background-animate hover:border hover:border-red-500 hover:text-white hover:bg-gradient-to-br hover:from-pink-600 hover:via-red-500 hover:to-orange-400'
-                } border border-gray-300 bg-white px-4 py-2 text-base font-medium shadow-sm  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
-              >
-                Generate
-              </button>
+              <div>
+                <button
+                  type="submit"
+                  className={`ml-2 inline-flex items-center rounded-md ${
+                    prompt === ''
+                      ? 'text-gray-200 cursor-not-allowed'
+                      : 'text-gray-700 background-animate hover:border hover:border-red-500 hover:text-white hover:bg-gradient-to-br hover:from-pink-600 hover:via-red-500 hover:to-orange-400'
+                  } border border-gray-300 bg-white px-4 py-2 text-base font-medium shadow-sm  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                >
+                  Generate{' '}
+                </button>
+                <div>
+                  <kbd className="text-xs text-gray-500 ml-2 text-center">
+                    <span className="">⌘ </span> enter
+                  </kbd>
+                </div>
+              </div>
             )}
           </form>
         </div>
@@ -398,7 +427,7 @@ function Image() {
 const Main = () => {
   const [showLogs, setShowLogs] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
-  const [images, setImages] = useState([]);
+  const [history, setHistory] = useState([]);
   const [logs, setLogs] = useState([]);
   const [showGallery, setShowGallery] = useState(false);
   const [weightsExist, setWeightsExist] = useState(true);
@@ -425,14 +454,22 @@ const Main = () => {
   });
 
   window.electron.ipcRenderer.on('image-dir', (paths) => {
-    setImages(paths.allImages.reverse());
-    console.log('Loaded outdir');
+    setHistory(paths.history);
+  });
+
+  window.electron.ipcRenderer.on('partial-weights', () => {
+    setWeightsExist(false);
   });
 
   window.electron.ipcRenderer.on('download-complete', (progress) => {
     setWeightProgess(100);
     setWeightsExist(true);
   });
+
+  const redownload = () => {
+    window.electron.ipcRenderer.sendMessage('redownload-weights');
+    setWeightsExist(false);
+  };
 
   const handleKeyPress = (e: any) => {
     if (e.key === '\\') {
@@ -461,7 +498,7 @@ const Main = () => {
     console.log(`front end loaded options ${JSON.stringify(options)}`);
   });
 
-  useEffect(() => {}, [images, options, showOptions]); // 👈️ add state variables you want to track
+  useEffect(() => {}, [history, options, showOptions]); // 👈️ add state variables you want to track
 
   const viewImage = (file: string) => {
     window.electron.ipcRenderer.sendMessage('open-file', file);
@@ -470,6 +507,7 @@ const Main = () => {
   document.addEventListener('keydown', handleKeyPress);
   return (
     <div>
+      <Toaster />
       <div className="container max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="py-8">
           <div className="flex justify-between">
@@ -486,7 +524,7 @@ const Main = () => {
               type="button"
               className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium leading-4 text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
-              {showGallery ? 'Hide Gallery' : 'Gallery'}{' '}
+              {showGallery ? 'Back to Home' : 'Gallery'}{' '}
               <kbd className="ml-2 text-gray-500 mx-1 flex h-5 w-8 items-center justify-center rounded border bg-white font-semibold sm:mx-2">
                 <span className="text-sm">⌘ </span> G
               </kbd>
@@ -512,17 +550,25 @@ const Main = () => {
                   Lexica.art
                 </button>
               </p>
-              <div className="grid grid-cols-2 gap-3 my-4">
-                {images.map((image, index) => (
-                  <div key={index} onClick={() => viewImage(image)}>
-                    <img
-                      className="rounded-lg shadow-sm hover:shadow-xl hover:cursor-pointer"
-                      src={`media-loader://${image}`}
-                      alt=""
-                    />
-                  </div>
-                ))}
-              </div>
+
+              {history.length == 0 ? (
+                <p className="text-center text-gray-500 mt-4">
+                  Gallery is empty — run a prompt!
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 my-4">
+                  {history.map(({ image, prompt }, index) => (
+                    <div key={index} onClick={() => viewImage(image)}>
+                      <img
+                        className="rounded-lg shadow-sm hover:shadow-xl hover:cursor-pointer"
+                        src={`media-loader://${image}`}
+                        alt=""
+                      />
+                      <p className="text-sm mt-2 text-gray-700">"{prompt}"</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -542,10 +588,25 @@ const Main = () => {
                   </div>
                 </div>
               </>
+              <p className="my-2 text-sm text-gray-500">
+                If you're having issues downloading the weights, you can
+                re-install:
+              </p>
+
+              <button
+                className="text-center rounded-md bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 px-3 py-2 text-sm font-medium leading-4 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                onClick={() => redownload()}
+              >
+                Restart Weights Installation
+              </button>
             </div>
           ) : (
             <div className={`${showGallery || showOptions ? 'hidden' : ''}`}>
-              <Prompt showOptions={showOptions} options={options} />
+              <Prompt
+                showOptions={showOptions}
+                options={options}
+                handleKeyPress={handleKeyPress}
+              />
 
               {/* Image */}
               <Image />
@@ -592,7 +653,7 @@ const Main = () => {
       {showLogs && (
         <div className="bg-gray-800 font-mono text-green-200 px-4 py-2 rounded-lg overflow-x-scroll w-full fixed bottom-0 -mb-4 h-1/2 z-0">
           <div className="text-green-300 flex justify-between">
-            <p>CHARL-E v0.0.4</p>
+            <p>CHARL-E</p>
 
             <p className="animate-pulse">{new Date().toLocaleTimeString()}</p>
           </div>

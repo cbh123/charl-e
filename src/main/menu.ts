@@ -64,7 +64,7 @@ export default class MenuBuilder {
         { label: 'Services', submenu: [] },
         { type: 'separator' },
         {
-          label: 'Hide ElectronReact',
+          label: 'Hide CHARL-E',
           accelerator: 'Command+H',
           selector: 'hide:',
         },
